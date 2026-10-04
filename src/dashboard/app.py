@@ -1,11 +1,13 @@
-import streamlit as st
+from pathlib import Path
+
 import pandas as pd
 import plotly.express as px
+import streamlit as st
 
 
-# -----------------------------
+# --------------------------------------------------
 # PAGE CONFIGURATION
-# -----------------------------
+# --------------------------------------------------
 
 st.set_page_config(
     page_title="E-Commerce Sales Analytics",
@@ -14,95 +16,172 @@ st.set_page_config(
 )
 
 
-# -----------------------------
-# LOAD DATA
-# -----------------------------
+# --------------------------------------------------
+# LOAD DATASET
+# --------------------------------------------------
 
-df = pd.read_csv("dataset/cleaned_ecommerce_sales.csv")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_FILE = PROJECT_ROOT / "global_ecommerce_sales.csv"
 
-df["Order Date"] = pd.to_datetime(df["Order Date"], errors="coerce")
+df = pd.read_csv(DATA_FILE)
+
+df["Order_Date"] = pd.to_datetime(
+    df["Order_Date"],
+    errors="coerce"
+)
+
+df["Year"] = df["Order_Date"].dt.year
+df["Month_Number"] = df["Order_Date"].dt.month
+df["Month"] = df["Order_Date"].dt.strftime("%b")
 
 
-# -----------------------------
+# --------------------------------------------------
 # TITLE
-# -----------------------------
+# --------------------------------------------------
 
 st.title("📊 E-Commerce Sales and Product Analytics Dashboard")
 
 st.write(
-    "Analyze sales, profit, products, categories, regions, and time-based trends."
+    "Analyze global e-commerce sales, profit, products, "
+    "categories, countries, regions, and time-based trends."
 )
 
 
-# -----------------------------
+# --------------------------------------------------
 # SIDEBAR FILTERS
-# -----------------------------
+# --------------------------------------------------
 
 st.sidebar.header("🔎 Dashboard Filters")
 
-categories = ["All"] + sorted(
-    df["Product Category"].dropna().unique().tolist()
+
+# Country
+countries = sorted(
+    df["Country"].dropna().unique().tolist()
 )
 
-regions = ["All"] + sorted(
-    df["Region"].dropna().unique().tolist()
-)
-
-segments = ["All"] + sorted(
-    df["Segment"].dropna().unique().tolist()
+selected_country = st.sidebar.selectbox(
+    "Country",
+    ["All Countries"] + countries
 )
 
 
-selected_category = st.sidebar.selectbox(
-    "Product Category",
-    categories
+# Filter data after country selection
+country_df = df.copy()
+
+if selected_country != "All Countries":
+    country_df = country_df[
+        country_df["Country"] == selected_country
+    ]
+
+
+# Region
+regions = sorted(
+    country_df["Region"].dropna().unique().tolist()
 )
 
 selected_region = st.sidebar.selectbox(
     "Region",
-    regions
+    ["All Regions"] + regions
+)
+
+
+# Product Category
+categories = sorted(
+    country_df["Product_Category"].dropna().unique().tolist()
+)
+
+selected_category = st.sidebar.selectbox(
+    "Product Category",
+    ["All Categories"] + categories
+)
+
+
+# Year
+years = sorted(
+    country_df["Year"].dropna().unique().tolist(),
+    reverse=True
+)
+
+selected_year = st.sidebar.selectbox(
+    "Year",
+    ["All Years"] + years
+)
+
+
+# Customer Segment
+segments = sorted(
+    country_df["Customer_Segment"].dropna().unique().tolist()
 )
 
 selected_segment = st.sidebar.selectbox(
     "Customer Segment",
-    segments
+    ["All Segments"] + segments
 )
 
 
-# -----------------------------
-# APPLY FILTERS
-# -----------------------------
+# --------------------------------------------------
+# APPLY ALL FILTERS
+# --------------------------------------------------
 
-filtered_df = df.copy()
+filtered_df = country_df.copy()
 
-
-if selected_category != "All":
-    filtered_df = filtered_df[
-        filtered_df["Product Category"] == selected_category
-    ]
-
-
-if selected_region != "All":
+if selected_region != "All Regions":
     filtered_df = filtered_df[
         filtered_df["Region"] == selected_region
     ]
 
-
-if selected_segment != "All":
+if selected_category != "All Categories":
     filtered_df = filtered_df[
-        filtered_df["Segment"] == selected_segment
+        filtered_df["Product_Category"] == selected_category
+    ]
+
+if selected_year != "All Years":
+    filtered_df = filtered_df[
+        filtered_df["Year"] == selected_year
+    ]
+
+if selected_segment != "All Segments":
+    filtered_df = filtered_df[
+        filtered_df["Customer_Segment"] == selected_segment
     ]
 
 
-# -----------------------------
-# BUSINESS KPIs
-# -----------------------------
+# --------------------------------------------------
+# SELECTED FILTER SUMMARY
+# --------------------------------------------------
 
-total_sales = filtered_df["Sales"].sum()
+st.info(
+    f"Country: **{selected_country}**  |  "
+    f"Region: **{selected_region}**  |  "
+    f"Category: **{selected_category}**  |  "
+    f"Year: **{selected_year}**  |  "
+    f"Segment: **{selected_segment}**"
+)
+
+
+# --------------------------------------------------
+# HANDLE EMPTY RESULTS
+# --------------------------------------------------
+
+if filtered_df.empty:
+
+    st.warning(
+        "No records found for the selected filters. "
+        "Please choose different filters."
+    )
+
+    st.stop()
+
+
+# --------------------------------------------------
+# KPI CALCULATIONS
+# --------------------------------------------------
+
+total_sales = filtered_df["Total_Sales"].sum()
 
 total_profit = filtered_df["Profit"].sum()
 
-total_orders = filtered_df["Order ID"].nunique()
+total_orders = filtered_df["Order_ID"].nunique()
 
 total_quantity = filtered_df["Quantity"].sum()
 
@@ -119,8 +198,11 @@ profit_margin = (
 )
 
 
-st.subheader("📈 Business KPIs")
+# --------------------------------------------------
+# KPI DISPLAY
+# --------------------------------------------------
 
+st.subheader("📈 Business KPIs")
 
 col1, col2, col3 = st.columns(3)
 
@@ -161,32 +243,34 @@ col6.metric(
 st.divider()
 
 
-# -----------------------------
+# --------------------------------------------------
 # MONTHLY SALES TREND
-# -----------------------------
+# --------------------------------------------------
 
 st.subheader("📈 Monthly Sales Trend")
 
-
 monthly_sales = (
     filtered_df
-    .groupby(["Year", "Month Number", "Month"], as_index=False)["Sales"]
+    .groupby(
+        ["Year", "Month_Number", "Month"],
+        as_index=False
+    )["Total_Sales"]
     .sum()
-    .sort_values(["Year", "Month Number"])
+    .sort_values(
+        ["Year", "Month_Number"]
+    )
 )
-
 
 monthly_sales["Year-Month"] = (
     monthly_sales["Year"].astype(str)
     + "-"
-    + monthly_sales["Month"].astype(str)
+    + monthly_sales["Month"]
 )
-
 
 fig_monthly = px.line(
     monthly_sales,
     x="Year-Month",
-    y="Sales",
+    y="Total_Sales",
     markers=True,
     title="Monthly Sales Trend"
 )
@@ -203,31 +287,36 @@ st.plotly_chart(
 )
 
 
-# -----------------------------
+# --------------------------------------------------
 # CATEGORY ANALYSIS
-# -----------------------------
+# --------------------------------------------------
 
 st.subheader("🛍️ Category Analysis")
 
-
 category_data = (
     filtered_df
-    .groupby("Product Category", as_index=False)
+    .groupby(
+        "Product_Category",
+        as_index=False
+    )
     .agg(
-        Sales=("Sales", "sum"),
-        Profit=("Profit", "sum")
+        Sales=("Total_Sales", "sum"),
+        Profit=("Profit", "sum"),
+        Quantity=("Quantity", "sum")
+    )
+    .sort_values(
+        "Sales",
+        ascending=False
     )
 )
 
-
 col1, col2 = st.columns(2)
-
 
 with col1:
 
     fig_category_sales = px.bar(
         category_data,
-        x="Product Category",
+        x="Product_Category",
         y="Sales",
         title="Sales by Category",
         text_auto=".2s"
@@ -243,7 +332,7 @@ with col2:
 
     fig_category_profit = px.bar(
         category_data,
-        x="Product Category",
+        x="Product_Category",
         y="Profit",
         title="Profit by Category",
         text_auto=".2s"
@@ -255,26 +344,87 @@ with col2:
     )
 
 
-# -----------------------------
-# REGIONAL ANALYSIS
-# -----------------------------
+# --------------------------------------------------
+# COUNTRY ANALYSIS
+# --------------------------------------------------
 
-st.subheader("🌍 Regional Analysis")
+st.subheader("🌍 Country Analysis")
 
-
-region_data = (
+country_data = (
     filtered_df
-    .groupby("Region", as_index=False)
+    .groupby(
+        "Country",
+        as_index=False
+    )
     .agg(
-        Sales=("Sales", "sum"),
+        Sales=("Total_Sales", "sum"),
         Profit=("Profit", "sum"),
-        Orders=("Order ID", "nunique")
+        Orders=("Order_ID", "nunique")
+    )
+    .sort_values(
+        "Sales",
+        ascending=False
     )
 )
 
-
 col1, col2 = st.columns(2)
 
+with col1:
+
+    fig_country_sales = px.bar(
+        country_data,
+        x="Country",
+        y="Sales",
+        title="Sales by Country",
+        text_auto=".2s"
+    )
+
+    st.plotly_chart(
+        fig_country_sales,
+        use_container_width=True
+    )
+
+
+with col2:
+
+    fig_country_profit = px.bar(
+        country_data,
+        x="Country",
+        y="Profit",
+        title="Profit by Country",
+        text_auto=".2s"
+    )
+
+    st.plotly_chart(
+        fig_country_profit,
+        use_container_width=True
+    )
+
+
+# --------------------------------------------------
+# REGION ANALYSIS
+# --------------------------------------------------
+
+st.subheader("🌎 Regional Analysis")
+
+region_data = (
+    filtered_df
+    .groupby(
+        "Region",
+        as_index=False
+    )
+    .agg(
+        Sales=("Total_Sales", "sum"),
+        Profit=("Profit", "sum"),
+        Orders=("Order_ID", "nunique")
+    )
+    .sort_values(
+        "Sales",
+        ascending=False
+    )
+)
+
+col1, col2 = st.columns(2)
 
 with col1:
 
@@ -308,30 +458,34 @@ with col2:
     )
 
 
-# -----------------------------
+# --------------------------------------------------
 # TOP 10 PRODUCTS
-# -----------------------------
+# --------------------------------------------------
 
 st.subheader("🏆 Top 10 Products")
 
-
 top_products = (
     filtered_df
-    .groupby("Product", as_index=False)
+    .groupby(
+        "Product_Name",
+        as_index=False
+    )
     .agg(
-        Sales=("Sales", "sum"),
+        Sales=("Total_Sales", "sum"),
         Profit=("Profit", "sum"),
         Quantity=("Quantity", "sum")
     )
-    .sort_values("Sales", ascending=False)
+    .sort_values(
+        "Sales",
+        ascending=False
+    )
     .head(10)
 )
-
 
 fig_products = px.bar(
     top_products.sort_values("Sales"),
     x="Sales",
-    y="Product",
+    y="Product_Name",
     orientation="h",
     title="Top 10 Products by Sales",
     text_auto=".2s"
@@ -343,10 +497,6 @@ st.plotly_chart(
 )
 
 
-# -----------------------------
-# PRODUCT TABLE
-# -----------------------------
-
 st.subheader("📋 Top Products Details")
 
 st.dataframe(
@@ -355,14 +505,14 @@ st.dataframe(
 )
 
 
-# -----------------------------
-# DATA PREVIEW
-# -----------------------------
+# --------------------------------------------------
+# FILTERED DATASET
+# --------------------------------------------------
 
 st.subheader("📊 Filtered Dataset")
 
 st.write(
-    f"Showing {len(filtered_df):,} records after applying filters."
+    f"Showing **{len(filtered_df):,}** records after applying filters."
 )
 
 st.dataframe(
@@ -371,15 +521,15 @@ st.dataframe(
 )
 
 
-# -----------------------------
-# DOWNLOAD DATA
-# -----------------------------
+# --------------------------------------------------
+# DOWNLOAD
+# --------------------------------------------------
 
 st.subheader("📥 Download Data")
 
-
-csv_data = filtered_df.to_csv(index=False).encode("utf-8")
-
+csv_data = filtered_df.to_csv(
+    index=False
+).encode("utf-8")
 
 st.download_button(
     label="Download Filtered Dataset",
@@ -389,13 +539,13 @@ st.download_button(
 )
 
 
-# -----------------------------
+# --------------------------------------------------
 # FOOTER
-# -----------------------------
+# --------------------------------------------------
 
 st.divider()
 
 st.caption(
     "E-Commerce Sales and Product Analytics Dashboard | "
     "Built with Python, Pandas, Plotly and Streamlit"
-) 
+)
